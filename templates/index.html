@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gork Web</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Gork Web</h1>
+        <form method="post" action="/add_spin">
+            <input type="text" name="spin_data" placeholder="Spinleri buraya yaz veya yapıştır">
+            <button type="submit">Ekle</button>
+        </form>
+
+        <form method="post" action="/predict">
+            <button type="submit">Tahmin Et</button>
+        </form>
+
+        <div class="result">
+            {% if prediction %}
+            <p><strong>Tahmin:</strong> {{ prediction }}</p>
+            {% endif %}
+        </div>
+
+        <div class="history">
+            <h3>Geçmiş Spinler</h3>
+            <ul>
+                {% for spin in spins %}
+                <li>{{ spin }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
