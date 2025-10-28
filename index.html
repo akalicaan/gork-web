@@ -1,0 +1,230 @@
+
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gork – Roulette Web</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Gork – Roulette Web</h1>
+      <div id="badge">Mobil Uyumlu</div>
+    </header>
+
+    <main>
+      <section id="status">
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="label">Krupiye</div>
+              <div id="dealer" class="value">—</div>
+            </div>
+            <div>
+              <div class="label">Son sayı</div>
+              <div id="last" class="value">—</div>
+            </div>
+            <div>
+              <div class="label">Tahmin</div>
+              <div id="pred" class="value highlight">—</div>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <div class="label">Güven</div>
+              <div id="conf" class="value">0.00</div>
+            </div>
+            <div>
+              <div class="label">Hit-rate</div>
+              <div id="hit" class="value">0.00</div>
+            </div>
+            <div>
+              <div class="label">Spin sayısı</div>
+              <div id="spins" class="value">0</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="pill" id="betpill">BET YOK</div>
+            <div class="pill warn" id="revpill">Normal</div>
+          </div>
+          <div class="row">
+            <div class="numbers" id="recent"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="controls">
+        <div class="card">
+          <h3>Kontroller</h3>
+          <div class="row">
+            <input type="number" id="spin" min="0" max="36" placeholder="Sayı (0–36)" />
+            <input type="text" id="lap_time" placeholder="Lap time (örn 0.65)" />
+            <input type="text" id="laps" placeholder="Laps (örn 15.5)" />
+            <button onclick="addSpin()">Spin Ekle</button>
+          </div>
+          <div class="row">
+            <input type="number" id="resolve" min="0" max="36" placeholder="Sonuç (0–36)" />
+            <button onclick="resolve()">Sonucu Gir</button>
+            <button onclick="betActivate()">Bahis Yap</button>
+            <button onclick="undo()">Geri Al</button>
+          </div>
+          <div class="row">
+            <input type="text" id="bet0" placeholder="Başlangıç bahsi (örn 0.10)" />
+            <button onclick="setInitialBet()">Ayarla</button>
+            <input type="text" id="bank" placeholder="Kasa (örn 100)" />
+            <button onclick="setBank()">Ayarla</button>
+            <input type="text" id="lapsval" placeholder="Laps to drop" />
+            <button onclick="setLaps()">Ayarla</button>
+          </div>
+          <div class="row">
+            <button onclick="toggleReverse()">Reverse Aç/Kapat</button>
+            <a class="link" href="/download/log.txt">Günlüğü indir</a>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Toplu Yapıştır</h3>
+          <textarea id="bulk" placeholder="Sayıları yapıştır (herhangi bir format)..."></textarea>
+          <div class="row">
+            <label><input type="checkbox" id="top_is_latest" /> Üst satır en yeni</label>
+            <button onclick="bulkImport()">Uygula</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="prediction" class="card">
+        <h3>Tahmin Kapsamı (8–1–8)</h3>
+        <div id="covered" class="numbers"></div>
+      </section>
+
+      <section id="history" class="card">
+        <h3>Geçmiş (son 50)</h3>
+        <div id="log"></div>
+      </section>
+    </main>
+
+    <footer>
+      <small>© Gork Web • Flask</small>
+    </footer>
+
+    <script>
+      async function getState() {
+        const r = await fetch('/api/state');
+        const data = await r.json();
+        render(data);
+      }
+      function render(s) {
+        const p = s.pending || {};
+        document.getElementById('dealer').textContent = s.dealer;
+        document.getElementById('last').textContent = s.last_number ?? '—';
+        document.getElementById('pred').textContent = p.adj_pred ?? '—';
+        document.getElementById('conf').textContent = (s.stats.conf||0).toFixed(2);
+        document.getElementById('hit').textContent = (s.stats.hit_rate||0).toFixed(2);
+        document.getElementById('spins').textContent = s.stats.spins;
+
+        const betpill = document.getElementById('betpill');
+        betpill.textContent = s.flags.gate_ok ? 'BET' : 'BET YOK';
+        betpill.className = 'pill ' + (s.flags.gate_ok ? 'ok' : 'bad');
+
+        const rev = document.getElementById('revpill');
+        rev.textContent = s.flags.reverse_mode ? 'Reverse' : 'Normal';
+        rev.className = 'pill ' + (s.flags.reverse_mode ? 'warn' : 'muted');
+
+        // Son 5
+        const rc = document.getElementById('recent');
+        rc.innerHTML = '';
+        (s.recent_spins||[]).forEach(n => {
+          const span = document.createElement('span');
+          span.className = 'num ' + (n==0?'green':([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36].includes(n)?'red':'black'));
+          span.textContent = n;
+          rc.appendChild(span);
+        });
+
+        // Covered
+        const cv = document.getElementById('covered');
+        cv.innerHTML = '';
+        (p.covered||[]).forEach(n=>{
+          const span = document.createElement('span');
+          span.className = 'num ' + (n==0?'green':([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36].includes(n)?'red':'black'));
+          span.textContent = n;
+          cv.appendChild(span);
+        });
+
+        // Log
+        const log = document.getElementById('log');
+        log.innerHTML = '';
+        (s.session_log||[]).forEach(rec=>{
+          const div = document.createElement('div');
+          div.className = 'logrow ' + (rec.result==='WIN'?'win':'lose');
+          div.textContent = `${new Date(rec.when*1000).toLocaleTimeString()} | Son:${rec.last} Tahmin:${rec.adj_pred} Güven:${rec.conf.toFixed(2)} -> ${rec.result}${rec.actual!=null?' ('+rec.actual+')':''}`;
+          log.appendChild(div);
+        });
+      }
+
+      async function postJSON(url, payload) {
+        const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload||{})});
+        if (!r.ok) {
+          const t = await r.text();
+          alert(t);
+          return null;
+        }
+        return await r.json();
+      }
+      async function addSpin() {
+        const n = document.getElementById('spin').value;
+        const lap_time = document.getElementById('lap_time').value;
+        const laps = document.getElementById('laps').value;
+        const s = await postJSON('/api/add_spin', {n, lap_time, laps});
+        if (s) render(s);
+        document.getElementById('spin').value='';
+        document.getElementById('lap_time').value='';
+        document.getElementById('laps').value='';
+      }
+      async function resolve() {
+        const n = document.getElementById('resolve').value;
+        const s = await postJSON('/api/resolve', {n});
+        if (s) render(s);
+        document.getElementById('resolve').value='';
+      }
+      async function betActivate() {
+        const s = await postJSON('/api/bet_activate', {});
+        if (s) render(s);
+      }
+      async function undo() {
+        const s = await postJSON('/api/undo', {});
+        if (s) render(s);
+      }
+      async function setInitialBet() {
+        const amount = document.getElementById('bet0').value;
+        const s = await postJSON('/api/set_initial_bet', {amount});
+        if (s) render(s);
+      }
+      async function setBank() {
+        const amount = document.getElementById('bank').value;
+        const s = await postJSON('/api/set_bankroll', {amount});
+        if (s) render(s);
+      }
+      async function setLaps() {
+        const value = document.getElementById('lapsval').value;
+        const s = await postJSON('/api/set_laps', {value});
+        if (s) render(s);
+      }
+      async function toggleReverse() {
+        const s = await postJSON('/api/toggle_reverse', {});
+        if (s) render(s);
+      }
+      async function bulkImport() {
+        const text = document.getElementById('bulk').value;
+        const top_is_latest = document.getElementById('top_is_latest').checked;
+        const s = await postJSON('/api/bulk_import', {text, top_is_latest});
+        if (s) render(s);
+        document.getElementById('bulk').value='';
+      }
+
+      // İlk yükleme ve periyodik güncelleme
+      getState();
+      setInterval(getState, 2000);
+    </script>
+  </body>
+</html>
